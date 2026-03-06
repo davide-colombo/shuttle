@@ -25,17 +25,24 @@ resolve_script_dir() {
   cd -P "$(dirname "$source")" >/dev/null 2>&1 && pwd
 }
 
-RMT_BIN_DIR="$(resolve_script_dir)"
-RMT_ROOT_DIR="$(cd -P "$RMT_BIN_DIR/.." >/dev/null 2>&1 && pwd)"
+_rmt_script_dir="$(resolve_script_dir)"
+_rmt_lib="${_rmt_script_dir}/../lib/rmt"
+if [[ ! -d "$_rmt_lib" ]]; then
+    _rmt_lib="${_rmt_script_dir}/../lib"
+fi
+if [[ ! -d "$_rmt_lib" ]]; then
+    printf "[rmt] ERROR lib directory not found\n" >&2
+    exit 1
+fi
 
 # shellcheck source=/dev/null
-source "$RMT_ROOT_DIR/lib/config.sh"
+source "$_rmt_lib/config.sh"
 # shellcheck source=/dev/null
-source "$RMT_ROOT_DIR/lib/transfer.sh"
+source "$_rmt_lib/transfer.sh"
 # shellcheck source=/dev/null
-source "$RMT_ROOT_DIR/lib/log.sh"
+source "$_rmt_lib/log.sh"
 # shellcheck source=/dev/null
-source "$RMT_ROOT_DIR/lib/util.sh"
+source "$_rmt_lib/util.sh"
 
 print_usage() {
   cat <<'USAGE'
