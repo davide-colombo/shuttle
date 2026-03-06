@@ -1,91 +1,365 @@
 #!/usr/bin/env bash
-# rmt config scaffolding
-# Intended responsibilities:
-# - Discover project config (.rmt.conf)
-# - Load global credentials from XDG config path
-# - Parse project INI profiles
-# - Resolve effective runtime config for selected profile
+# rmt configuration loader and resolver
 
 set -euo pipefail
 
-# Project-level discovery outputs.
+# Discovery globals.
 RMT_PROJECT_ROOT=""
 RMT_PROJECT_CONF=""
 
-# Global credentials outputs.
+# Global credentials.
 RMT_REMOTE_HOST=""
 RMT_REMOTE_USER=""
 RMT_SSH_PORT="22"
 RMT_SSH_KEY=""
 
-# Profile-scoped settings (associative arrays keyed by profile name).
-declare -gA RMT_PROFILE_REMOTE_ROOT=()
-declare -gA RMT_PROFILE_LOCAL_ROOT=()
-declare -gA RMT_PROFILE_DIRECTION=()
-declare -gA RMT_PROFILE_DELETE=()
-declare -gA RMT_PROFILE_VERIFY=()
-declare -gA RMT_PROFILE_RSYNC_FLAGS=()
-declare -gA RMT_PROFILE_EXCLUDES=()
-declare -gA RMT_PROFILE_INCLUDES=()
+# Flat profile map: section.key -> value.
+declare -gA _RMT_PROFILES=()
 
-# Resolved transfer settings after profile merge.
-RMT_EFFECTIVE_PROFILE="default"
-RMT_EFFECTIVE_REMOTE_ROOT=""
-RMT_EFFECTIVE_LOCAL_ROOT=""
-RMT_EFFECTIVE_DIRECTION=""
-RMT_EFFECTIVE_DELETE="no"
-RMT_EFFECTIVE_VERIFY="no"
+# Resolved transfer variables.
+RMT_XFER_HOST=""
+RMT_XFER_PORT=""
+RMT_XFER_KEY=""
+RMT_XFER_REMOTE_ROOT=""
+RMT_XFER_LOCAL_ROOT=""
+RMT_XFER_DIRECTION=""
+RMT_XFER_EXCLUDES=""
+RMT_XFER_INCLUDES=""
+RMT_XFER_EXTRA_FLAGS=""
+RMT_XFER_DELETE="no"
+RMT_XFER_VERIFY="no"
+
+# config_trim VALUE
+# Trim leading and trailing whitespace.
+config_trim() {
+  local value="${1-}"
+
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s\n' "${value}"
+}
+
+# config_strip_quotes VALUE
+# Remove one pair of surrounding single or double quotes.
+config_strip_quotes() {
+  local value="${1-}"
+
+  if [[ "${value}" =~ ^"(.*)"$ ]]; then
+    value="${BASH_REMATCH[1]}"
+  elif [[ "${value}" =~ ^\'(.*)\'$ ]]; then
+    value="${BASH_REMATCH[1]}"
+  fi
+
+  printf '%s\n' "${value}"
+}
+
+# config_line_is_unsafe LINE
+# Return success if line contains shell-expansion-like tokens.
+config_line_is_unsafe() {
+  local line="${1-}"
+
+  [[ "${line}" == *'`'* || "${line}" == *'$('* || "${line}" == *'${'* ]]
+}
+
+# config_append_colon EXISTING VALUE
+# Append VALUE to EXISTING using colon separator.
+config_append_colon() {
+  local existing="${1-}"
+  local value="${2-}"
+
+  if [[ -z "${value}" ]]; then
+    printf '%s\n' "${existing}"
+  elif [[ -z "${existing}" ]]; then
+    printf '%s\n' "${value}"
+  else
+    printf '%s:%s\n' "${existing}" "${value}"
+  fi
+}
 
 # config_discover_project
-# Walk upward from $PWD to locate .rmt.conf.
-# On success set:
-# - RMT_PROJECT_ROOT
-# - RMT_PROJECT_CONF
-# Return 0 on success, 1 if no project config is found.
+# Walk up from PWD to / searching for .rmt.conf.
+# On success sets RMT_PROJECT_ROOT and RMT_PROJECT_CONF and returns 0.
+# On failure returns 1 without mutating discovery globals.
 config_discover_project() {
-  # TODO: implement upward directory walk and discovery logic.
+  local saved_pwd="${PWD}"
+  local cursor="${PWD}"
+  local resolved=""
+  local candidate=""
+
+  while :; do
+    if ! cd -P "${cursor}" >/dev/null 2>&1; then
+      break
+    fi
+
+    resolved="${PWD}"
+    candidate="${resolved}/.rmt.conf"
+
+    if [[ -f "${candidate}" ]]; then
+      RMT_PROJECT_ROOT="${resolved}"
+      RMT_PROJECT_CONF="${candidate}"
+      cd "${saved_pwd}" >/dev/null 2>&1 || true
+      return 0
+    fi
+
+    if [[ "${resolved}" == "/" ]]; then
+      break
+    fi
+
+    cursor="$(dirname "${resolved}")"
+  done
+
+  cd "${saved_pwd}" >/dev/null 2>&1 || true
   return 1
 }
 
 # config_load_global
-# Load global credentials from:
-#   ${XDG_CONFIG_HOME:-$HOME/.config}/rmt/credentials.env
-# Validate ownership and mode (must be owned by current UID and mode 600).
-# Parse KEY=VALUE manually (no source), ignoring comments/blank lines.
-# Populate:
-# - RMT_REMOTE_HOST
-# - RMT_REMOTE_USER
-# - RMT_SSH_PORT (default 22)
-# - RMT_SSH_KEY (optional)
+# Load and validate global credentials file.
 config_load_global() {
-  # TODO: implement secure credentials loading and validation.
-  return 0
+  local conf_path=""
+  local owner_uid=""
+  local current_uid=""
+  local mode=""
+  local raw_line=""
+  local line=""
+  local key=""
+  local value=""
+
+  if [[ -n "${RMT_GLOBAL_CONF:-}" ]]; then
+    conf_path="${RMT_GLOBAL_CONF}"
+  else
+    conf_path="${XDG_CONFIG_HOME:-$HOME/.config}/rmt/credentials.env"
+  fi
+
+  [[ -f "${conf_path}" ]] || log_die "global credentials file not found: ${conf_path}"
+
+  current_uid="$(id -u)"
+  if util_is_darwin; then
+    if owner_uid="$(/usr/bin/stat -f %u "${conf_path}" 2>/dev/null)"; then
+      :
+    elif owner_uid="$(stat -f %u "${conf_path}" 2>/dev/null)"; then
+      :
+    else
+      log_die "unable to read owner uid for ${conf_path}"
+    fi
+  else
+    if owner_uid="$(stat -c %u "${conf_path}" 2>/dev/null)"; then
+      :
+    else
+      log_die "unable to read owner uid for ${conf_path}"
+    fi
+  fi
+
+  [[ "${owner_uid}" == "${current_uid}" ]] || {
+    log_die "credentials owner uid ${owner_uid} does not match current uid ${current_uid}: ${conf_path}"
+  }
+
+  mode="$(util_stat_mode "${conf_path}")"
+  [[ "${mode}" == "0600" ]] || log_die "credentials mode must be 0600, got ${mode}: ${conf_path}"
+
+  RMT_REMOTE_HOST=""
+  RMT_REMOTE_USER=""
+  RMT_SSH_PORT="22"
+  RMT_SSH_KEY=""
+
+  while IFS= read -r raw_line || [[ -n "${raw_line}" ]]; do
+    line="$(config_trim "${raw_line}")"
+
+    [[ -n "${line}" ]] || continue
+    [[ "${line:0:1}" == "#" ]] && continue
+
+    if config_line_is_unsafe "${line}"; then
+      continue
+    fi
+
+    if [[ "${line}" =~ ^([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+      key="${BASH_REMATCH[1]}"
+      value="$(config_trim "${BASH_REMATCH[2]}")"
+      value="$(config_strip_quotes "${value}")"
+
+      case "${key}" in
+        REMOTE_HOST) RMT_REMOTE_HOST="${value}" ;;
+        REMOTE_USER) RMT_REMOTE_USER="${value}" ;;
+        SSH_PORT)
+          if [[ -n "${value}" ]]; then
+            RMT_SSH_PORT="${value}"
+          fi
+          ;;
+        SSH_KEY) RMT_SSH_KEY="${value}" ;;
+        *)
+          log_warn "config_load_global: unknown key '${key}' in ${conf_path}"
+          ;;
+      esac
+    else
+      log_warn "config_load_global: ignoring malformed line in ${conf_path}: ${line}"
+    fi
+  done < "${conf_path}"
+
+  [[ -n "${RMT_REMOTE_HOST}" ]] || log_die "REMOTE_HOST is required in ${conf_path}"
+  [[ -n "${RMT_REMOTE_USER}" ]] || log_die "REMOTE_USER is required in ${conf_path}"
+  [[ "${RMT_SSH_PORT}" =~ ^[0-9]+$ ]] || log_die "SSH_PORT must be numeric in ${conf_path}"
 }
 
-# config_load_project
-# Parse .rmt.conf (INI-like) with sections [default] and named profiles.
-# Recognized keys per section:
-# - remote_root
-# - local_root (default: project root)
-# - direction (up|down|both)
-# - exclude (repeatable)
-# - include (repeatable)
-# - rsync_flags
-# - delete (yes|no, default no)
-# - verify (yes|no, default no; yes implies --append-verify behavior)
-# Populate associative arrays keyed by profile name.
+# config_load_project PROFILE_NAME
+# Parse all profiles from RMT_PROJECT_CONF into _RMT_PROFILES.
 config_load_project() {
-  # TODO: implement INI parser and profile population.
-  return 0
+  local requested_profile="${1:-default}"
+  local conf_path="${RMT_PROJECT_CONF:-}"
+  local section=""
+  local raw_line=""
+  local line=""
+  local key=""
+  local value=""
+  local profile_key=""
+
+  [[ -n "${conf_path}" ]] || log_die "project config path is not set (run config_discover_project first)"
+  [[ -f "${conf_path}" ]] || log_die "project config file not found: ${conf_path}"
+  [[ -n "${RMT_PROJECT_ROOT:-}" ]] || log_die "project root is not set (run config_discover_project first)"
+
+  unset _RMT_PROFILES
+  declare -gA _RMT_PROFILES=()
+
+  while IFS= read -r raw_line || [[ -n "${raw_line}" ]]; do
+    line="$(config_trim "${raw_line}")"
+
+    [[ -n "${line}" ]] || continue
+    [[ "${line:0:1}" == "#" ]] && continue
+
+    if config_line_is_unsafe "${line}"; then
+      continue
+    fi
+
+    if [[ "${line}" =~ ^\[([A-Za-z0-9_.-]+)\]$ ]]; then
+      section="${BASH_REMATCH[1]}"
+      _RMT_PROFILES["${section}.__exists"]="1"
+      _RMT_PROFILES["${section}.local_root"]="${RMT_PROJECT_ROOT}"
+      _RMT_PROFILES["${section}.direction"]="both"
+      _RMT_PROFILES["${section}.delete"]="no"
+      _RMT_PROFILES["${section}.verify"]="no"
+      _RMT_PROFILES["${section}.exclude"]=""
+      _RMT_PROFILES["${section}.include"]=""
+      _RMT_PROFILES["${section}.rsync_flags"]=""
+      continue
+    fi
+
+    if [[ -z "${section}" ]]; then
+      log_warn "config_load_project: ignoring line outside any section in ${conf_path}: ${line}"
+      continue
+    fi
+
+    if [[ "${line}" =~ ^([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+      key="${BASH_REMATCH[1]}"
+      value="$(config_trim "${BASH_REMATCH[2]}")"
+      value="$(config_strip_quotes "${value}")"
+      profile_key="${section}.${key}"
+
+      case "${key}" in
+        remote_root)
+          _RMT_PROFILES["${profile_key}"]="${value}"
+          ;;
+        local_root)
+          if [[ -n "${value}" ]]; then
+            _RMT_PROFILES["${profile_key}"]="${value}"
+          else
+            _RMT_PROFILES["${profile_key}"]="${RMT_PROJECT_ROOT}"
+          fi
+          ;;
+        direction)
+          case "${value}" in
+            up|down|both) _RMT_PROFILES["${profile_key}"]="${value}" ;;
+            *) log_die "invalid direction '${value}' in [${section}] (${conf_path})" ;;
+          esac
+          ;;
+        exclude)
+          _RMT_PROFILES["${section}.exclude"]="$(config_append_colon "${_RMT_PROFILES[${section}.exclude]:-}" "${value}")"
+          ;;
+        include)
+          _RMT_PROFILES["${section}.include"]="$(config_append_colon "${_RMT_PROFILES[${section}.include]:-}" "${value}")"
+          ;;
+        rsync_flags)
+          _RMT_PROFILES["${profile_key}"]="${value}"
+          ;;
+        delete)
+          case "${value}" in
+            yes|no) _RMT_PROFILES["${profile_key}"]="${value}" ;;
+            *) log_die "invalid delete value '${value}' in [${section}] (${conf_path})" ;;
+          esac
+          ;;
+        verify)
+          case "${value}" in
+            yes|no) _RMT_PROFILES["${profile_key}"]="${value}" ;;
+            *) log_die "invalid verify value '${value}' in [${section}] (${conf_path})" ;;
+          esac
+          ;;
+        *)
+          log_warn "config_load_project: unknown key '${key}' in section [${section}]"
+          ;;
+      esac
+    else
+      log_warn "config_load_project: ignoring malformed line in ${conf_path}: ${line}"
+    fi
+  done < "${conf_path}"
+
+  [[ "${_RMT_PROFILES[default.__exists]:-}" == "1" ]] || {
+    log_die "project config must define a [default] section: ${conf_path}"
+  }
+  [[ -n "${_RMT_PROFILES[default.remote_root]:-}" ]] || {
+    log_die "[default] section must define remote_root: ${conf_path}"
+  }
+
+  if [[ -n "${requested_profile}" ]] && [[ "${requested_profile}" != "default" ]]; then
+    if [[ "${_RMT_PROFILES[${requested_profile}.__exists]:-}" != "1" ]]; then
+      log_warn "config_load_project: requested profile '${requested_profile}' not found during parse"
+    fi
+  fi
 }
 
-# config_resolve_profile
-# Merge global credentials and selected profile (default: "default") into
-# final transfer variables consumed by transfer builders/executors.
+# config_resolve_profile PROFILE_NAME
+# Merge global credentials and profile settings into final transfer globals.
 config_resolve_profile() {
   local profile="${1:-default}"
+  local remote_root=""
+  local local_root=""
+  local direction=""
+  local delete_val=""
+  local verify_val=""
 
-  # TODO: implement profile resolution and default fallback behavior.
-  RMT_EFFECTIVE_PROFILE="$profile"
-  return 0
+  [[ "${_RMT_PROFILES[${profile}.__exists]:-}" == "1" ]] || {
+    log_die "profile '${profile}' not found"
+  }
+
+  [[ -n "${RMT_REMOTE_HOST:-}" ]] || log_die "global REMOTE_HOST is not loaded"
+  [[ -n "${RMT_REMOTE_USER:-}" ]] || log_die "global REMOTE_USER is not loaded"
+
+  remote_root="${_RMT_PROFILES[${profile}.remote_root]:-}"
+  [[ -n "${remote_root}" ]] || log_die "profile '${profile}' is missing remote_root"
+
+  local_root="${_RMT_PROFILES[${profile}.local_root]:-${RMT_PROJECT_ROOT}}"
+  direction="${_RMT_PROFILES[${profile}.direction]:-both}"
+  delete_val="${_RMT_PROFILES[${profile}.delete]:-no}"
+  verify_val="${_RMT_PROFILES[${profile}.verify]:-no}"
+
+  case "${direction}" in
+    up|down|both) : ;;
+    *) log_die "profile '${profile}' has invalid direction '${direction}'" ;;
+  esac
+  case "${delete_val}" in
+    yes|no) : ;;
+    *) log_die "profile '${profile}' has invalid delete value '${delete_val}'" ;;
+  esac
+  case "${verify_val}" in
+    yes|no) : ;;
+    *) log_die "profile '${profile}' has invalid verify value '${verify_val}'" ;;
+  esac
+
+  RMT_XFER_HOST="${RMT_REMOTE_USER}@${RMT_REMOTE_HOST}"
+  RMT_XFER_PORT="${RMT_SSH_PORT}"
+  RMT_XFER_KEY="${RMT_SSH_KEY:-}"
+  RMT_XFER_REMOTE_ROOT="${remote_root}"
+  RMT_XFER_LOCAL_ROOT="${local_root}"
+  RMT_XFER_DIRECTION="${direction}"
+  RMT_XFER_EXCLUDES="${_RMT_PROFILES[${profile}.exclude]:-}"
+  RMT_XFER_INCLUDES="${_RMT_PROFILES[${profile}.include]:-}"
+  RMT_XFER_EXTRA_FLAGS="${_RMT_PROFILES[${profile}.rsync_flags]:-}"
+  RMT_XFER_DELETE="${delete_val}"
+  RMT_XFER_VERIFY="${verify_val}"
 }
