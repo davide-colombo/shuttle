@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+# rmt - remote mirror transfer utility (scaffold)
+# This is the main entrypoint. Command logic is intentionally stubbed.
+
+set -euo pipefail
+
+RMT_VERSION="0.1.0"
+
+RMT_DRY_RUN=0
+RMT_VERBOSE=0
+RMT_PROFILE="default"
+RMT_CONFIG_PATH=""
+
+# Resolve the directory of this script, following symlinks.
+resolve_script_dir() {
+  local source="${BASH_SOURCE[0]}"
+  local dir
+
+  while [[ -L "$source" ]]; do
+    dir="$(cd -P "$(dirname "$source")" >/dev/null 2>&1 && pwd)"
+    source="$(readlink "$source")"
+    [[ "$source" != /* ]] && source="$dir/$source"
+  done
+
+  cd -P "$(dirname "$source")" >/dev/null 2>&1 && pwd
+}
+
+RMT_BIN_DIR="$(resolve_script_dir)"
+RMT_ROOT_DIR="$(cd -P "$RMT_BIN_DIR/.." >/dev/null 2>&1 && pwd)"
+
+# shellcheck source=/dev/null
+source "$RMT_ROOT_DIR/lib/config.sh"
+# shellcheck source=/dev/null
+source "$RMT_ROOT_DIR/lib/transfer.sh"
+# shellcheck source=/dev/null
+source "$RMT_ROOT_DIR/lib/log.sh"
+# shellcheck source=/dev/null
+source "$RMT_ROOT_DIR/lib/util.sh"
+
+print_usage() {
+  cat <<'USAGE'
+Usage:
+  rmt [--dry-run] [--verbose] [--profile <name>] [--config <path>] <subcommand>
+
+Subcommands:
+  up
+  down
+  status
+  init
+  help
+  version
+USAGE
+}
+
+cmd_up() {
+  echo "not yet implemented"
+  exit 0
+}
+
+cmd_down() {
+  echo "not yet implemented"
+  exit 0
+}
+
+cmd_status() {
+  echo "not yet implemented"
+  exit 0
+}
+
+cmd_init() {
+  echo "not yet implemented"
+  exit 0
+}
+
+cmd_help() {
+  echo "not yet implemented"
+  exit 0
+}
+
+cmd_version() {
+  echo "not yet implemented"
+  exit 0
+}
+
+# Parse global flags before subcommand.
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run)
+      RMT_DRY_RUN=1
+      shift
+      ;;
+    --verbose)
+      RMT_VERBOSE=1
+      shift
+      ;;
+    --profile)
+      [[ $# -ge 2 ]] || { echo "Missing value for --profile" >&2; print_usage; exit 1; }
+      RMT_PROFILE="$2"
+      shift 2
+      ;;
+    --config)
+      [[ $# -ge 2 ]] || { echo "Missing value for --config" >&2; print_usage; exit 1; }
+      RMT_CONFIG_PATH="$2"
+      shift 2
+      ;;
+    --)
+      shift
+      break
+      ;;
+    -*)
+      echo "Unknown flag: $1" >&2
+      print_usage
+      exit 1
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+if [[ $# -lt 1 ]]; then
+  print_usage
+  exit 1
+fi
+
+subcommand="$1"
+shift || true
+
+case "$subcommand" in
+  up)      cmd_up "$@" ;;
+  down)    cmd_down "$@" ;;
+  status)  cmd_status "$@" ;;
+  init)    cmd_init "$@" ;;
+  help)    cmd_help "$@" ;;
+  version) cmd_version "$@" ;;
+  *)
+    echo "Unknown subcommand: $subcommand" >&2
+    print_usage
+    exit 1
+    ;;
+esac
