@@ -19,7 +19,7 @@ uninstall:
 	rm -rf "$(SHARE_DIR)"
 
 init-config:
-	@config_home="${XDG_CONFIG_HOME:-$$HOME/.config}"; \
+	@config_home="$${XDG_CONFIG_HOME:-$$HOME/.config}"; \
 	conf_dir="$$config_home/rmt"; \
 	conf_file="$$conf_dir/credentials.env"; \
 	mkdir -p "$$conf_dir"; \
