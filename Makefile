@@ -26,10 +26,10 @@ init-config:
 	if [ ! -f "$$conf_file" ]; then \
 		printf '%s\n' \
 			'# rmt global credentials' \
-			'RMT_REMOTE_HOST=' \
-			'RMT_REMOTE_USER=' \
-			'RMT_SSH_PORT=22' \
-			'# RMT_SSH_KEY=/path/to/id_ed25519' > "$$conf_file"; \
+			'REMOTE_HOST =' \
+			'REMOTE_USER =' \
+			'SSH_PORT = 22' \
+			'# SSH_KEY =' > "$$conf_file"; \
 		chmod 600 "$$conf_file"; \
 		echo "Created $$conf_file"; \
 	else \
