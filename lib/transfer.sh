@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# rmt transfer engine
+# shuttle transfer engine
 
 set -euo pipefail
 
 # Built rsync argv.
-declare -ga _RMT_RSYNC_CMD=()
+declare -ga _SHUTTLE_RSYNC_CMD=()
 
 # transfer_join_cmd_for_log
 # Join command elements for debug logging.
@@ -41,7 +41,7 @@ transfer_append_colon_patterns() {
     fi
 
     [[ -n "$item" ]] || continue
-    _RMT_RSYNC_CMD+=( "--${flag}=${item}" )
+    _SHUTTLE_RSYNC_CMD+=( "--${flag}=${item}" )
   done
 }
 
@@ -63,7 +63,7 @@ transfer_rsync_code_hint() {
 }
 
 # transfer_build_cmd DIRECTION
-# Build _RMT_RSYNC_CMD from resolved profile variables.
+# Build _SHUTTLE_RSYNC_CMD from resolved profile variables.
 transfer_build_cmd() {
   local direction="${1:-}"
   local key_part=""
@@ -74,38 +74,38 @@ transfer_build_cmd() {
   local part=""
   local had_noglob=0
 
-  [[ -n "${RMT_XFER_HOST:-}" ]] || log_die "transfer_build_cmd: RMT_XFER_HOST is empty"
-  [[ -n "${RMT_XFER_PORT:-}" ]] || log_die "transfer_build_cmd: RMT_XFER_PORT is empty"
-  [[ -n "${RMT_XFER_REMOTE_ROOT:-}" ]] || log_die "transfer_build_cmd: RMT_XFER_REMOTE_ROOT is empty"
-  [[ -n "${RMT_XFER_LOCAL_ROOT:-}" ]] || log_die "transfer_build_cmd: RMT_XFER_LOCAL_ROOT is empty"
+  [[ -n "${SHUTTLE_XFER_HOST:-}" ]] || log_die "transfer_build_cmd: SHUTTLE_XFER_HOST is empty"
+  [[ -n "${SHUTTLE_XFER_PORT:-}" ]] || log_die "transfer_build_cmd: SHUTTLE_XFER_PORT is empty"
+  [[ -n "${SHUTTLE_XFER_REMOTE_ROOT:-}" ]] || log_die "transfer_build_cmd: SHUTTLE_XFER_REMOTE_ROOT is empty"
+  [[ -n "${SHUTTLE_XFER_LOCAL_ROOT:-}" ]] || log_die "transfer_build_cmd: SHUTTLE_XFER_LOCAL_ROOT is empty"
 
-  _RMT_RSYNC_CMD=( rsync )
+  _SHUTTLE_RSYNC_CMD=( rsync )
 
-  if [[ "${RMT_XFER_VERIFY:-no}" == "yes" ]]; then
-    _RMT_RSYNC_CMD+=( --archive --human-readable --info=progress2 --append-verify )
+  if [[ "${SHUTTLE_XFER_VERIFY:-no}" == "yes" ]]; then
+    _SHUTTLE_RSYNC_CMD+=( --archive --human-readable --info=progress2 --append-verify )
   else
-    _RMT_RSYNC_CMD+=( --archive --human-readable --info=progress2 --partial --partial-dir=.rsync-partial )
+    _SHUTTLE_RSYNC_CMD+=( --archive --human-readable --info=progress2 --partial --partial-dir=.rsync-partial )
   fi
 
-  if [[ "${RMT_XFER_DELETE:-no}" == "yes" ]]; then
-    _RMT_RSYNC_CMD+=( --delete )
+  if [[ "${SHUTTLE_XFER_DELETE:-no}" == "yes" ]]; then
+    _SHUTTLE_RSYNC_CMD+=( --delete )
   fi
 
-  if [[ "${RMT_DRY_RUN:-0}" == "1" ]]; then
-    _RMT_RSYNC_CMD+=( --dry-run )
+  if [[ "${SHUTTLE_DRY_RUN:-0}" == "1" ]]; then
+    _SHUTTLE_RSYNC_CMD+=( --dry-run )
   fi
 
-  if [[ -n "${RMT_XFER_KEY:-}" ]]; then
-    key_part=" -i ${RMT_XFER_KEY}"
+  if [[ -n "${SHUTTLE_XFER_KEY:-}" ]]; then
+    key_part=" -i ${SHUTTLE_XFER_KEY}"
   fi
-  transport="ssh -p ${RMT_XFER_PORT}${key_part}"
-  _RMT_RSYNC_CMD+=( "-e" "${transport}" )
+  transport="ssh -p ${SHUTTLE_XFER_PORT}${key_part}"
+  _SHUTTLE_RSYNC_CMD+=( "-e" "${transport}" )
 
-  transfer_append_colon_patterns "exclude" "${RMT_XFER_EXCLUDES:-}"
-  transfer_append_colon_patterns "include" "${RMT_XFER_INCLUDES:-}"
+  transfer_append_colon_patterns "exclude" "${SHUTTLE_XFER_EXCLUDES:-}"
+  transfer_append_colon_patterns "include" "${SHUTTLE_XFER_INCLUDES:-}"
 
-  if [[ -n "${RMT_XFER_EXTRA_FLAGS:-}" ]]; then
-    extra="${RMT_XFER_EXTRA_FLAGS}"
+  if [[ -n "${SHUTTLE_XFER_EXTRA_FLAGS:-}" ]]; then
+    extra="${SHUTTLE_XFER_EXTRA_FLAGS}"
     case "$-" in
       *f*) had_noglob=1 ;;
       *) had_noglob=0 ;;
@@ -114,7 +114,7 @@ transfer_build_cmd() {
     # Intentionally word-split extra flags using default IFS.
     # shellcheck disable=SC2086
     for part in ${extra}; do
-      _RMT_RSYNC_CMD+=( "${part}" )
+      _SHUTTLE_RSYNC_CMD+=( "${part}" )
     done
     if (( had_noglob == 0 )); then
       set +f
@@ -123,30 +123,30 @@ transfer_build_cmd() {
 
   case "$direction" in
     up)
-      src="${RMT_XFER_LOCAL_ROOT}/"
-      dst="${RMT_XFER_HOST}:${RMT_XFER_REMOTE_ROOT}/"
+      src="${SHUTTLE_XFER_LOCAL_ROOT}/"
+      dst="${SHUTTLE_XFER_HOST}:${SHUTTLE_XFER_REMOTE_ROOT}/"
       ;;
     down)
-      src="${RMT_XFER_HOST}:${RMT_XFER_REMOTE_ROOT}/"
-      dst="${RMT_XFER_LOCAL_ROOT}/"
+      src="${SHUTTLE_XFER_HOST}:${SHUTTLE_XFER_REMOTE_ROOT}/"
+      dst="${SHUTTLE_XFER_LOCAL_ROOT}/"
       ;;
     *)
       log_die "transfer_build_cmd: invalid direction '$direction'"
       ;;
   esac
 
-  _RMT_RSYNC_CMD+=( "$src" "$dst" )
-  log_debug "rsync command: $(transfer_join_cmd_for_log "${_RMT_RSYNC_CMD[@]}")"
+  _SHUTTLE_RSYNC_CMD+=( "$src" "$dst" )
+  log_debug "rsync command: $(transfer_join_cmd_for_log "${_SHUTTLE_RSYNC_CMD[@]}")"
 }
 
 # transfer_exec
-# Execute _RMT_RSYNC_CMD and return rsync exit code.
+# Execute _SHUTTLE_RSYNC_CMD and return rsync exit code.
 transfer_exec() {
   local rc=0
   local hint=""
 
   set +e
-  "${_RMT_RSYNC_CMD[@]}"
+  "${_SHUTTLE_RSYNC_CMD[@]}"
   rc=$?
   set -e
 
@@ -169,10 +169,10 @@ transfer_status() {
   local rc=0
 
   transfer_build_cmd "$direction"
-  _RMT_RSYNC_CMD+=( --dry-run --itemize-changes )
+  _SHUTTLE_RSYNC_CMD+=( --dry-run --itemize-changes )
 
   set +e
-  summary="$("${_RMT_RSYNC_CMD[@]}" | awk '
+  summary="$("${_SHUTTLE_RSYNC_CMD[@]}" | awk '
     BEGIN { send=0; del=0; }
     /^\*deleting / { del++; next; }
     /^[<>ch\.][^[:space:]]*[[:space:]]/ { send++; next; }

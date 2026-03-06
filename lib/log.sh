@@ -1,31 +1,31 @@
 #!/usr/bin/env bash
-# rmt logging utilities
+# shuttle logging utilities
 
 set -euo pipefail
 
 # log_info MSG
 # Print an informational message to stderr.
 log_info() {
-  printf '[rmt] INFO  %s\n' "$*" >&2
+  printf '[shuttle] INFO  %s\n' "$*" >&2
 }
 
 # log_warn MSG
 # Print a warning message to stderr.
 log_warn() {
-  printf '[rmt] WARN  %s\n' "$*" >&2
+  printf '[shuttle] WARN  %s\n' "$*" >&2
 }
 
 # log_error MSG
 # Print an error message to stderr.
 log_error() {
-  printf '[rmt] ERROR %s\n' "$*" >&2
+  printf '[shuttle] ERROR %s\n' "$*" >&2
 }
 
 # log_debug MSG
-# Print a debug message to stderr only when RMT_VERBOSE=1.
+# Print a debug message to stderr only when SHUTTLE_VERBOSE=1.
 log_debug() {
-  [[ "${RMT_VERBOSE:-0}" == "1" ]] || return 0
-  printf '[rmt] DEBUG %s\n' "$*" >&2
+  [[ "${SHUTTLE_VERBOSE:-0}" == "1" ]] || return 0
+  printf '[shuttle] DEBUG %s\n' "$*" >&2
 }
 
 # log_die MSG [EXIT_CODE]

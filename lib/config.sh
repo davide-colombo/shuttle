@@ -1,33 +1,33 @@
 #!/usr/bin/env bash
-# rmt configuration loader and resolver
+# shuttle configuration loader and resolver
 
 set -euo pipefail
 
 # Discovery globals.
-RMT_PROJECT_ROOT=""
-RMT_PROJECT_CONF=""
+SHUTTLE_PROJECT_ROOT=""
+SHUTTLE_PROJECT_CONF=""
 
 # Global credentials.
-RMT_REMOTE_HOST=""
-RMT_REMOTE_USER=""
-RMT_SSH_PORT="22"
-RMT_SSH_KEY=""
+SHUTTLE_REMOTE_HOST=""
+SHUTTLE_REMOTE_USER=""
+SHUTTLE_SSH_PORT="22"
+SHUTTLE_SSH_KEY=""
 
 # Flat profile map: section.key -> value.
-declare -gA _RMT_PROFILES=()
+declare -gA _SHUTTLE_PROFILES=()
 
 # Resolved transfer variables.
-RMT_XFER_HOST=""
-RMT_XFER_PORT=""
-RMT_XFER_KEY=""
-RMT_XFER_REMOTE_ROOT=""
-RMT_XFER_LOCAL_ROOT=""
-RMT_XFER_DIRECTION=""
-RMT_XFER_EXCLUDES=""
-RMT_XFER_INCLUDES=""
-RMT_XFER_EXTRA_FLAGS=""
-RMT_XFER_DELETE="no"
-RMT_XFER_VERIFY="no"
+SHUTTLE_XFER_HOST=""
+SHUTTLE_XFER_PORT=""
+SHUTTLE_XFER_KEY=""
+SHUTTLE_XFER_REMOTE_ROOT=""
+SHUTTLE_XFER_LOCAL_ROOT=""
+SHUTTLE_XFER_DIRECTION=""
+SHUTTLE_XFER_EXCLUDES=""
+SHUTTLE_XFER_INCLUDES=""
+SHUTTLE_XFER_EXTRA_FLAGS=""
+SHUTTLE_XFER_DELETE="no"
+SHUTTLE_XFER_VERIFY="no"
 
 # config_trim VALUE
 # Trim leading and trailing whitespace.
@@ -77,8 +77,8 @@ config_append_colon() {
 }
 
 # config_discover_project
-# Walk up from PWD to / searching for .rmt.conf.
-# On success sets RMT_PROJECT_ROOT and RMT_PROJECT_CONF and returns 0.
+# Walk up from PWD to / searching for .shuttle.conf.
+# On success sets SHUTTLE_PROJECT_ROOT and SHUTTLE_PROJECT_CONF and returns 0.
 # On failure returns 1 without mutating discovery globals.
 config_discover_project() {
   local saved_pwd="${PWD}"
@@ -92,11 +92,11 @@ config_discover_project() {
     fi
 
     resolved="${PWD}"
-    candidate="${resolved}/.rmt.conf"
+    candidate="${resolved}/.shuttle.conf"
 
     if [[ -f "${candidate}" ]]; then
-      RMT_PROJECT_ROOT="${resolved}"
-      RMT_PROJECT_CONF="${candidate}"
+      SHUTTLE_PROJECT_ROOT="${resolved}"
+      SHUTTLE_PROJECT_CONF="${candidate}"
       cd "${saved_pwd}" >/dev/null 2>&1 || true
       return 0
     fi
@@ -124,10 +124,10 @@ config_load_global() {
   local key=""
   local value=""
 
-  if [[ -n "${RMT_GLOBAL_CONF:-}" ]]; then
-    conf_path="${RMT_GLOBAL_CONF}"
+  if [[ -n "${SHUTTLE_GLOBAL_CONF:-}" ]]; then
+    conf_path="${SHUTTLE_GLOBAL_CONF}"
   else
-    conf_path="${XDG_CONFIG_HOME:-$HOME/.config}/rmt/credentials.env"
+    conf_path="${XDG_CONFIG_HOME:-$HOME/.config}/shuttle/credentials.env"
   fi
 
   [[ -f "${conf_path}" ]] || log_die "global credentials file not found: ${conf_path}"
@@ -156,10 +156,10 @@ config_load_global() {
   mode="$(util_stat_mode "${conf_path}")"
   [[ "${mode}" == "0600" ]] || log_die "credentials mode must be 0600, got ${mode}: ${conf_path}"
 
-  RMT_REMOTE_HOST=""
-  RMT_REMOTE_USER=""
-  RMT_SSH_PORT="22"
-  RMT_SSH_KEY=""
+  SHUTTLE_REMOTE_HOST=""
+  SHUTTLE_REMOTE_USER=""
+  SHUTTLE_SSH_PORT="22"
+  SHUTTLE_SSH_KEY=""
 
   while IFS= read -r raw_line || [[ -n "${raw_line}" ]]; do
     line="$(config_trim "${raw_line}")"
@@ -177,14 +177,14 @@ config_load_global() {
       value="$(config_strip_quotes "${value}")"
 
       case "${key}" in
-        REMOTE_HOST) RMT_REMOTE_HOST="${value}" ;;
-        REMOTE_USER) RMT_REMOTE_USER="${value}" ;;
+        REMOTE_HOST) SHUTTLE_REMOTE_HOST="${value}" ;;
+        REMOTE_USER) SHUTTLE_REMOTE_USER="${value}" ;;
         SSH_PORT)
           if [[ -n "${value}" ]]; then
-            RMT_SSH_PORT="${value}"
+            SHUTTLE_SSH_PORT="${value}"
           fi
           ;;
-        SSH_KEY) RMT_SSH_KEY="${value}" ;;
+        SSH_KEY) SHUTTLE_SSH_KEY="${value}" ;;
         *)
           log_warn "config_load_global: unknown key '${key}' in ${conf_path}"
           ;;
@@ -194,16 +194,16 @@ config_load_global() {
     fi
   done < "${conf_path}"
 
-  [[ -n "${RMT_REMOTE_HOST}" ]] || log_die "REMOTE_HOST is required in ${conf_path}"
-  [[ -n "${RMT_REMOTE_USER}" ]] || log_die "REMOTE_USER is required in ${conf_path}"
-  [[ "${RMT_SSH_PORT}" =~ ^[0-9]+$ ]] || log_die "SSH_PORT must be numeric in ${conf_path}"
+  [[ -n "${SHUTTLE_REMOTE_HOST}" ]] || log_die "REMOTE_HOST is required in ${conf_path}"
+  [[ -n "${SHUTTLE_REMOTE_USER}" ]] || log_die "REMOTE_USER is required in ${conf_path}"
+  [[ "${SHUTTLE_SSH_PORT}" =~ ^[0-9]+$ ]] || log_die "SSH_PORT must be numeric in ${conf_path}"
 }
 
 # config_load_project PROFILE_NAME
-# Parse all profiles from RMT_PROJECT_CONF into _RMT_PROFILES.
+# Parse all profiles from SHUTTLE_PROJECT_CONF into _SHUTTLE_PROFILES.
 config_load_project() {
   local requested_profile="${1:-default}"
-  local conf_path="${RMT_PROJECT_CONF:-}"
+  local conf_path="${SHUTTLE_PROJECT_CONF:-}"
   local section=""
   local raw_line=""
   local line=""
@@ -213,10 +213,10 @@ config_load_project() {
 
   [[ -n "${conf_path}" ]] || log_die "project config path is not set (run config_discover_project first)"
   [[ -f "${conf_path}" ]] || log_die "project config file not found: ${conf_path}"
-  [[ -n "${RMT_PROJECT_ROOT:-}" ]] || log_die "project root is not set (run config_discover_project first)"
+  [[ -n "${SHUTTLE_PROJECT_ROOT:-}" ]] || log_die "project root is not set (run config_discover_project first)"
 
-  unset _RMT_PROFILES
-  declare -gA _RMT_PROFILES=()
+  unset _SHUTTLE_PROFILES
+  declare -gA _SHUTTLE_PROFILES=()
 
   while IFS= read -r raw_line || [[ -n "${raw_line}" ]]; do
     line="$(config_trim "${raw_line}")"
@@ -230,14 +230,14 @@ config_load_project() {
 
     if [[ "${line}" =~ ^\[([A-Za-z0-9_.-]+)\]$ ]]; then
       section="${BASH_REMATCH[1]}"
-      _RMT_PROFILES["${section}.__exists"]="1"
-      _RMT_PROFILES["${section}.local_root"]="${RMT_PROJECT_ROOT}"
-      _RMT_PROFILES["${section}.direction"]="both"
-      _RMT_PROFILES["${section}.delete"]="no"
-      _RMT_PROFILES["${section}.verify"]="no"
-      _RMT_PROFILES["${section}.exclude"]=""
-      _RMT_PROFILES["${section}.include"]=""
-      _RMT_PROFILES["${section}.rsync_flags"]=""
+      _SHUTTLE_PROFILES["${section}.__exists"]="1"
+      _SHUTTLE_PROFILES["${section}.local_root"]="${SHUTTLE_PROJECT_ROOT}"
+      _SHUTTLE_PROFILES["${section}.direction"]="both"
+      _SHUTTLE_PROFILES["${section}.delete"]="no"
+      _SHUTTLE_PROFILES["${section}.verify"]="no"
+      _SHUTTLE_PROFILES["${section}.exclude"]=""
+      _SHUTTLE_PROFILES["${section}.include"]=""
+      _SHUTTLE_PROFILES["${section}.rsync_flags"]=""
       continue
     fi
 
@@ -254,39 +254,39 @@ config_load_project() {
 
       case "${key}" in
         remote_root)
-          _RMT_PROFILES["${profile_key}"]="${value}"
+          _SHUTTLE_PROFILES["${profile_key}"]="${value}"
           ;;
         local_root)
           if [[ -n "${value}" ]]; then
-            _RMT_PROFILES["${profile_key}"]="${value}"
+            _SHUTTLE_PROFILES["${profile_key}"]="${value}"
           else
-            _RMT_PROFILES["${profile_key}"]="${RMT_PROJECT_ROOT}"
+            _SHUTTLE_PROFILES["${profile_key}"]="${SHUTTLE_PROJECT_ROOT}"
           fi
           ;;
         direction)
           case "${value}" in
-            up|down|both) _RMT_PROFILES["${profile_key}"]="${value}" ;;
+            up|down|both) _SHUTTLE_PROFILES["${profile_key}"]="${value}" ;;
             *) log_die "invalid direction '${value}' in [${section}] (${conf_path})" ;;
           esac
           ;;
         exclude)
-          _RMT_PROFILES["${section}.exclude"]="$(config_append_colon "${_RMT_PROFILES[${section}.exclude]:-}" "${value}")"
+          _SHUTTLE_PROFILES["${section}.exclude"]="$(config_append_colon "${_SHUTTLE_PROFILES[${section}.exclude]:-}" "${value}")"
           ;;
         include)
-          _RMT_PROFILES["${section}.include"]="$(config_append_colon "${_RMT_PROFILES[${section}.include]:-}" "${value}")"
+          _SHUTTLE_PROFILES["${section}.include"]="$(config_append_colon "${_SHUTTLE_PROFILES[${section}.include]:-}" "${value}")"
           ;;
         rsync_flags)
-          _RMT_PROFILES["${profile_key}"]="${value}"
+          _SHUTTLE_PROFILES["${profile_key}"]="${value}"
           ;;
         delete)
           case "${value}" in
-            yes|no) _RMT_PROFILES["${profile_key}"]="${value}" ;;
+            yes|no) _SHUTTLE_PROFILES["${profile_key}"]="${value}" ;;
             *) log_die "invalid delete value '${value}' in [${section}] (${conf_path})" ;;
           esac
           ;;
         verify)
           case "${value}" in
-            yes|no) _RMT_PROFILES["${profile_key}"]="${value}" ;;
+            yes|no) _SHUTTLE_PROFILES["${profile_key}"]="${value}" ;;
             *) log_die "invalid verify value '${value}' in [${section}] (${conf_path})" ;;
           esac
           ;;
@@ -299,15 +299,15 @@ config_load_project() {
     fi
   done < "${conf_path}"
 
-  [[ "${_RMT_PROFILES[default.__exists]:-}" == "1" ]] || {
+  [[ "${_SHUTTLE_PROFILES[default.__exists]:-}" == "1" ]] || {
     log_die "project config must define a [default] section: ${conf_path}"
   }
-  [[ -n "${_RMT_PROFILES[default.remote_root]:-}" ]] || {
+  [[ -n "${_SHUTTLE_PROFILES[default.remote_root]:-}" ]] || {
     log_die "[default] section must define remote_root: ${conf_path}"
   }
 
   if [[ -n "${requested_profile}" ]] && [[ "${requested_profile}" != "default" ]]; then
-    if [[ "${_RMT_PROFILES[${requested_profile}.__exists]:-}" != "1" ]]; then
+    if [[ "${_SHUTTLE_PROFILES[${requested_profile}.__exists]:-}" != "1" ]]; then
       log_warn "config_load_project: requested profile '${requested_profile}' not found during parse"
     fi
   fi
@@ -323,20 +323,20 @@ config_resolve_profile() {
   local delete_val=""
   local verify_val=""
 
-  [[ "${_RMT_PROFILES[${profile}.__exists]:-}" == "1" ]] || {
+  [[ "${_SHUTTLE_PROFILES[${profile}.__exists]:-}" == "1" ]] || {
     log_die "profile '${profile}' not found"
   }
 
-  [[ -n "${RMT_REMOTE_HOST:-}" ]] || log_die "global REMOTE_HOST is not loaded"
-  [[ -n "${RMT_REMOTE_USER:-}" ]] || log_die "global REMOTE_USER is not loaded"
+  [[ -n "${SHUTTLE_REMOTE_HOST:-}" ]] || log_die "global REMOTE_HOST is not loaded"
+  [[ -n "${SHUTTLE_REMOTE_USER:-}" ]] || log_die "global REMOTE_USER is not loaded"
 
-  remote_root="${_RMT_PROFILES[${profile}.remote_root]:-}"
+  remote_root="${_SHUTTLE_PROFILES[${profile}.remote_root]:-}"
   [[ -n "${remote_root}" ]] || log_die "profile '${profile}' is missing remote_root"
 
-  local_root="${_RMT_PROFILES[${profile}.local_root]:-${RMT_PROJECT_ROOT}}"
-  direction="${_RMT_PROFILES[${profile}.direction]:-both}"
-  delete_val="${_RMT_PROFILES[${profile}.delete]:-no}"
-  verify_val="${_RMT_PROFILES[${profile}.verify]:-no}"
+  local_root="${_SHUTTLE_PROFILES[${profile}.local_root]:-${SHUTTLE_PROJECT_ROOT}}"
+  direction="${_SHUTTLE_PROFILES[${profile}.direction]:-both}"
+  delete_val="${_SHUTTLE_PROFILES[${profile}.delete]:-no}"
+  verify_val="${_SHUTTLE_PROFILES[${profile}.verify]:-no}"
 
   case "${direction}" in
     up|down|both) : ;;
@@ -351,15 +351,15 @@ config_resolve_profile() {
     *) log_die "profile '${profile}' has invalid verify value '${verify_val}'" ;;
   esac
 
-  RMT_XFER_HOST="${RMT_REMOTE_USER}@${RMT_REMOTE_HOST}"
-  RMT_XFER_PORT="${RMT_SSH_PORT}"
-  RMT_XFER_KEY="${RMT_SSH_KEY:-}"
-  RMT_XFER_REMOTE_ROOT="${remote_root}"
-  RMT_XFER_LOCAL_ROOT="${local_root}"
-  RMT_XFER_DIRECTION="${direction}"
-  RMT_XFER_EXCLUDES="${_RMT_PROFILES[${profile}.exclude]:-}"
-  RMT_XFER_INCLUDES="${_RMT_PROFILES[${profile}.include]:-}"
-  RMT_XFER_EXTRA_FLAGS="${_RMT_PROFILES[${profile}.rsync_flags]:-}"
-  RMT_XFER_DELETE="${delete_val}"
-  RMT_XFER_VERIFY="${verify_val}"
+  SHUTTLE_XFER_HOST="${SHUTTLE_REMOTE_USER}@${SHUTTLE_REMOTE_HOST}"
+  SHUTTLE_XFER_PORT="${SHUTTLE_SSH_PORT}"
+  SHUTTLE_XFER_KEY="${SHUTTLE_SSH_KEY:-}"
+  SHUTTLE_XFER_REMOTE_ROOT="${remote_root}"
+  SHUTTLE_XFER_LOCAL_ROOT="${local_root}"
+  SHUTTLE_XFER_DIRECTION="${direction}"
+  SHUTTLE_XFER_EXCLUDES="${_SHUTTLE_PROFILES[${profile}.exclude]:-}"
+  SHUTTLE_XFER_INCLUDES="${_SHUTTLE_PROFILES[${profile}.include]:-}"
+  SHUTTLE_XFER_EXTRA_FLAGS="${_SHUTTLE_PROFILES[${profile}.rsync_flags]:-}"
+  SHUTTLE_XFER_DELETE="${delete_val}"
+  SHUTTLE_XFER_VERIFY="${verify_val}"
 }

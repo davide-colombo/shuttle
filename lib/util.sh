@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# rmt utility helpers
+# shuttle utility helpers
 
 set -euo pipefail
 
 # Cache for detected platform.
-_RMT_PLATFORM=""
+_SHUTTLE_PLATFORM=""
 
 # util_resolve_script_dir [CALLER_SOURCE]
 # Resolve and print the absolute, symlink-resolved directory of the caller script.
@@ -92,11 +92,11 @@ util_platform() {
 # util_is_darwin
 # Return success on darwin, failure otherwise. Caches platform result.
 util_is_darwin() {
-  if [[ -z "${_RMT_PLATFORM}" ]]; then
-    _RMT_PLATFORM="$(util_platform)"
+  if [[ -z "${_SHUTTLE_PLATFORM}" ]]; then
+    _SHUTTLE_PLATFORM="$(util_platform)"
   fi
 
-  [[ "${_RMT_PLATFORM}" == "darwin" ]]
+  [[ "${_SHUTTLE_PLATFORM}" == "darwin" ]]
 }
 
 # util_stat_size FILE

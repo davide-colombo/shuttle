@@ -1,31 +1,31 @@
 PREFIX ?= $(HOME)/.local
 
 BIN_DIR := $(PREFIX)/bin
-LIB_DIR := $(PREFIX)/lib/rmt
-SHARE_DIR := $(PREFIX)/share/rmt
+LIB_DIR := $(PREFIX)/lib/shuttle
+SHARE_DIR := $(PREFIX)/share/shuttle
 
 .PHONY: install uninstall init-config
 
 install:
 	mkdir -p "$(BIN_DIR)" "$(LIB_DIR)" "$(SHARE_DIR)"
-	cp bin/rmt "$(BIN_DIR)/rmt"
-	chmod +x "$(BIN_DIR)/rmt"
+	cp bin/shuttle "$(BIN_DIR)/shuttle"
+	chmod +x "$(BIN_DIR)/shuttle"
 	cp -R lib/. "$(LIB_DIR)/"
-	cp -R share/rmt/. "$(SHARE_DIR)/"
+	cp -R share/shuttle/. "$(SHARE_DIR)/"
 
 uninstall:
-	rm -f "$(BIN_DIR)/rmt"
+	rm -f "$(BIN_DIR)/shuttle"
 	rm -rf "$(LIB_DIR)"
 	rm -rf "$(SHARE_DIR)"
 
 init-config:
 	@config_home="$${XDG_CONFIG_HOME:-$$HOME/.config}"; \
-	conf_dir="$$config_home/rmt"; \
+	conf_dir="$$config_home/shuttle"; \
 	conf_file="$$conf_dir/credentials.env"; \
 	mkdir -p "$$conf_dir"; \
 	if [ ! -f "$$conf_file" ]; then \
 		printf '%s\n' \
-			'# rmt global credentials' \
+			'# shuttle global credentials' \
 			'REMOTE_HOST =' \
 			'REMOTE_USER =' \
 			'SSH_PORT = 22' \

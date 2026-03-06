@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# rmt - remote mirror transfer utility (scaffold)
+# shuttle - remote mirror transfer utility
 # This is the main entrypoint. Command logic is intentionally stubbed.
 
 set -euo pipefail
 
-RMT_VERSION="0.1.0"
+SHUTTLE_VERSION="0.1.0"
 
-RMT_DRY_RUN=0
-RMT_VERBOSE=0
-RMT_PROFILE="default"
-RMT_CONFIG_PATH=""
+SHUTTLE_DRY_RUN=0
+SHUTTLE_VERBOSE=0
+SHUTTLE_PROFILE="default"
+SHUTTLE_CONFIG_PATH=""
 
 # Resolve the directory of this script, following symlinks.
 resolve_script_dir() {
@@ -25,29 +25,29 @@ resolve_script_dir() {
   cd -P "$(dirname "$source")" >/dev/null 2>&1 && pwd
 }
 
-_rmt_script_dir="$(resolve_script_dir)"
-_rmt_lib="${_rmt_script_dir}/../lib/rmt"
-if [[ ! -d "$_rmt_lib" ]]; then
-    _rmt_lib="${_rmt_script_dir}/../lib"
+_shuttle_script_dir="$(resolve_script_dir)"
+_shuttle_lib="${_shuttle_script_dir}/../lib/shuttle"
+if [[ ! -d "$_shuttle_lib" ]]; then
+    _shuttle_lib="${_shuttle_script_dir}/../lib"
 fi
-if [[ ! -d "$_rmt_lib" ]]; then
-    printf "[rmt] ERROR lib directory not found\n" >&2
+if [[ ! -d "$_shuttle_lib" ]]; then
+    printf "[shuttle] ERROR lib directory not found\n" >&2
     exit 1
 fi
 
 # shellcheck source=/dev/null
-source "$_rmt_lib/config.sh"
+source "$_shuttle_lib/config.sh"
 # shellcheck source=/dev/null
-source "$_rmt_lib/transfer.sh"
+source "$_shuttle_lib/transfer.sh"
 # shellcheck source=/dev/null
-source "$_rmt_lib/log.sh"
+source "$_shuttle_lib/log.sh"
 # shellcheck source=/dev/null
-source "$_rmt_lib/util.sh"
+source "$_shuttle_lib/util.sh"
 
 print_usage() {
   cat <<'USAGE'
 Usage:
-  rmt [--dry-run] [--verbose] [--profile <name>] [--config <path>] <subcommand>
+  shuttle [--dry-run] [--verbose] [--profile <name>] [--config <path>] <subcommand>
 
 Subcommands:
   up
@@ -65,27 +65,27 @@ cmd_up() {
   local conf_dir=""
 
   if ! config_discover_project; then
-    log_die "no .rmt.conf found from $PWD upward; run 'rmt init' first"
+    log_die "no .shuttle.conf found from $PWD upward; run 'shuttle init' first"
   fi
 
-  if [[ -n "${RMT_CONFIG_PATH:-}" ]]; then
-    conf_path="${RMT_CONFIG_PATH}"
+  if [[ -n "${SHUTTLE_CONFIG_PATH:-}" ]]; then
+    conf_path="${SHUTTLE_CONFIG_PATH}"
     if [[ "${conf_path}" != /* ]]; then
       conf_path="${PWD}/${conf_path}"
     fi
     conf_dir="$(cd -P "$(dirname "${conf_path}")" >/dev/null 2>&1 && pwd)"
     conf_path="${conf_dir}/$(basename "${conf_path}")"
     [[ -f "${conf_path}" ]] || log_die "project config override not found: ${conf_path}"
-    RMT_PROJECT_ROOT="${conf_dir}"
-    RMT_PROJECT_CONF="${conf_path}"
+    SHUTTLE_PROJECT_ROOT="${conf_dir}"
+    SHUTTLE_PROJECT_CONF="${conf_path}"
   fi
 
   config_load_global
   config_load_project
-  config_resolve_profile "${RMT_PROFILE}"
+  config_resolve_profile "${SHUTTLE_PROFILE}"
 
-  if [[ "${RMT_XFER_DIRECTION}" == "down" ]]; then
-    log_die "profile '${RMT_PROFILE}' does not allow uploads (direction=down)"
+  if [[ "${SHUTTLE_XFER_DIRECTION}" == "down" ]]; then
+    log_die "profile '${SHUTTLE_PROFILE}' does not allow uploads (direction=down)"
   fi
 
   transfer_build_cmd up
@@ -102,27 +102,27 @@ cmd_down() {
   local conf_dir=""
 
   if ! config_discover_project; then
-    log_die "no .rmt.conf found from $PWD upward; run 'rmt init' first"
+    log_die "no .shuttle.conf found from $PWD upward; run 'shuttle init' first"
   fi
 
-  if [[ -n "${RMT_CONFIG_PATH:-}" ]]; then
-    conf_path="${RMT_CONFIG_PATH}"
+  if [[ -n "${SHUTTLE_CONFIG_PATH:-}" ]]; then
+    conf_path="${SHUTTLE_CONFIG_PATH}"
     if [[ "${conf_path}" != /* ]]; then
       conf_path="${PWD}/${conf_path}"
     fi
     conf_dir="$(cd -P "$(dirname "${conf_path}")" >/dev/null 2>&1 && pwd)"
     conf_path="${conf_dir}/$(basename "${conf_path}")"
     [[ -f "${conf_path}" ]] || log_die "project config override not found: ${conf_path}"
-    RMT_PROJECT_ROOT="${conf_dir}"
-    RMT_PROJECT_CONF="${conf_path}"
+    SHUTTLE_PROJECT_ROOT="${conf_dir}"
+    SHUTTLE_PROJECT_CONF="${conf_path}"
   fi
 
   config_load_global
   config_load_project
-  config_resolve_profile "${RMT_PROFILE}"
+  config_resolve_profile "${SHUTTLE_PROFILE}"
 
-  if [[ "${RMT_XFER_DIRECTION}" == "up" ]]; then
-    log_die "profile '${RMT_PROFILE}' does not allow downloads (direction=up)"
+  if [[ "${SHUTTLE_XFER_DIRECTION}" == "up" ]]; then
+    log_die "profile '${SHUTTLE_PROFILE}' does not allow downloads (direction=up)"
   fi
 
   transfer_build_cmd down
@@ -141,24 +141,24 @@ cmd_status() {
   local conf_dir=""
 
   if ! config_discover_project; then
-    log_die "no .rmt.conf found from $PWD upward; run 'rmt init' first"
+    log_die "no .shuttle.conf found from $PWD upward; run 'shuttle init' first"
   fi
 
-  if [[ -n "${RMT_CONFIG_PATH:-}" ]]; then
-    conf_path="${RMT_CONFIG_PATH}"
+  if [[ -n "${SHUTTLE_CONFIG_PATH:-}" ]]; then
+    conf_path="${SHUTTLE_CONFIG_PATH}"
     if [[ "${conf_path}" != /* ]]; then
       conf_path="${PWD}/${conf_path}"
     fi
     conf_dir="$(cd -P "$(dirname "${conf_path}")" >/dev/null 2>&1 && pwd)"
     conf_path="${conf_dir}/$(basename "${conf_path}")"
     [[ -f "${conf_path}" ]] || log_die "project config override not found: ${conf_path}"
-    RMT_PROJECT_ROOT="${conf_dir}"
-    RMT_PROJECT_CONF="${conf_path}"
+    SHUTTLE_PROJECT_ROOT="${conf_dir}"
+    SHUTTLE_PROJECT_CONF="${conf_path}"
   fi
 
   config_load_global
   config_load_project
-  config_resolve_profile "${RMT_PROFILE}"
+  config_resolve_profile "${SHUTTLE_PROFILE}"
 
   if [[ -n "${requested_direction}" ]]; then
     case "${requested_direction}" in
@@ -166,10 +166,10 @@ cmd_status() {
       *) log_die "status direction must be 'up' or 'down' (got: ${requested_direction})" ;;
     esac
   else
-    case "${RMT_XFER_DIRECTION}" in
+    case "${SHUTTLE_XFER_DIRECTION}" in
       both) status_direction="up" ;;
-      up|down) status_direction="${RMT_XFER_DIRECTION}" ;;
-      *) log_die "invalid profile direction '${RMT_XFER_DIRECTION}' for status" ;;
+      up|down) status_direction="${SHUTTLE_XFER_DIRECTION}" ;;
+      *) log_die "invalid profile direction '${SHUTTLE_XFER_DIRECTION}' for status" ;;
     esac
   fi
 
@@ -184,27 +184,27 @@ cmd_init() {
   local script_dir=""
   local root_dir=""
   local template_conf=""
-  local target_conf="${PWD}/.rmt.conf"
+  local target_conf="${PWD}/.shuttle.conf"
   local global_conf=""
 
   if [[ -f "${target_conf}" ]]; then
-    log_warn ".rmt.conf already exists at ${target_conf}; leaving it unchanged"
+    log_warn ".shuttle.conf already exists at ${target_conf}; leaving it unchanged"
     exit 0
   fi
 
   script_dir="$(util_resolve_script_dir "${BASH_SOURCE[0]-}")"
   root_dir="$(cd -P "${script_dir}/.." >/dev/null 2>&1 && pwd)"
-  template_conf="${root_dir}/share/rmt/template.rmt.conf"
+  template_conf="${root_dir}/share/shuttle/template.shuttle.conf"
   [[ -f "${template_conf}" ]] || log_die "template file not found: ${template_conf}"
 
   cp "${template_conf}" "${target_conf}"
   log_info "created ${target_conf}"
-  log_info "edit .rmt.conf to set your remote_root and profile options"
+  log_info "edit .shuttle.conf to set your remote_root and profile options"
 
-  if [[ -n "${RMT_GLOBAL_CONF:-}" ]]; then
-    global_conf="${RMT_GLOBAL_CONF}"
+  if [[ -n "${SHUTTLE_GLOBAL_CONF:-}" ]]; then
+    global_conf="${SHUTTLE_GLOBAL_CONF}"
   else
-    global_conf="${XDG_CONFIG_HOME:-$HOME/.config}/rmt/credentials.env"
+    global_conf="${XDG_CONFIG_HOME:-$HOME/.config}/shuttle/credentials.env"
   fi
 
   if [[ ! -f "${global_conf}" ]]; then
@@ -217,11 +217,11 @@ cmd_init() {
 
 cmd_help() {
   cat >&2 <<EOF
-rmt ${RMT_VERSION}
-Usage: rmt [flags] <command>
+shuttle ${SHUTTLE_VERSION}
+Usage: shuttle [flags] <command>
 
 Commands:
-  init      create .rmt.conf from template in current directory
+  init      create .shuttle.conf from template in current directory
   up        sync local changes to remote
   down      sync remote changes to local
   status    show what would transfer (dry-run itemized summary)
@@ -231,18 +231,18 @@ Commands:
 Global flags:
   --dry-run           run rsync without writing changes
   --verbose           enable debug logs
-  --profile <name>    use named profile from .rmt.conf (default: default)
+  --profile <name>    use named profile from .shuttle.conf (default: default)
   --config <path>     override project config file path
 
 Config files:
-  project: .rmt.conf (discovered from current directory upward)
-  global:  \${XDG_CONFIG_HOME:-\$HOME/.config}/rmt/credentials.env (mode 600)
+  project: .shuttle.conf (discovered from current directory upward)
+  global:  \${XDG_CONFIG_HOME:-\$HOME/.config}/shuttle/credentials.env (mode 600)
 EOF
   exit 0
 }
 
 cmd_version() {
-  printf 'rmt %s\n' "${RMT_VERSION}" >&2
+  printf 'shuttle %s\n' "${SHUTTLE_VERSION}" >&2
   exit 0
 }
 
@@ -250,21 +250,21 @@ cmd_version() {
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run)
-      RMT_DRY_RUN=1
+      SHUTTLE_DRY_RUN=1
       shift
       ;;
     --verbose)
-      RMT_VERBOSE=1
+      SHUTTLE_VERBOSE=1
       shift
       ;;
     --profile)
       [[ $# -ge 2 ]] || { echo "Missing value for --profile" >&2; print_usage; exit 1; }
-      RMT_PROFILE="$2"
+      SHUTTLE_PROFILE="$2"
       shift 2
       ;;
     --config)
       [[ $# -ge 2 ]] || { echo "Missing value for --config" >&2; print_usage; exit 1; }
-      RMT_CONFIG_PATH="$2"
+      SHUTTLE_CONFIG_PATH="$2"
       shift 2
       ;;
     --)
