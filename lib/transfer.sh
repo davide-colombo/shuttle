@@ -1,42 +1,193 @@
 #!/usr/bin/env bash
-# rmt transfer scaffolding
-# Intended responsibilities:
-# - Build rsync command arrays from resolved config
-# - Execute transfers and surface exit codes
-# - Report transfer status in dry-run/itemized mode
+# rmt transfer engine
 
 set -euo pipefail
 
-# transfer_build_cmd
-# Construct rsync argv from resolved config.
-# Base flags:
-#   --archive --human-readable --info=progress2 --partial --partial-dir=.rsync-partial
-# Apply per-profile include/exclude and extra rsync flags.
-# If verify=yes, use --append-verify instead of --partial.
-# If global --dry-run is active, include --dry-run.
-# Direction handling:
-# - up:   local_root/ -> user@host:remote_root/
-# - down: user@host:remote_root/ -> local_root/
-# SSH transport:
-# -e "ssh -p PORT -i KEY" when key is set.
+# Built rsync argv.
+declare -ga _RMT_RSYNC_CMD=()
+
+# transfer_join_cmd_for_log
+# Join command elements for debug logging.
+transfer_join_cmd_for_log() {
+  local out=""
+  local arg=""
+  for arg in "$@"; do
+    if [[ -z "$out" ]]; then
+      out="$arg"
+    else
+      out="$out $arg"
+    fi
+  done
+  printf '%s\n' "$out"
+}
+
+# transfer_append_colon_patterns FLAG LIST
+# Convert colon-separated patterns to repeated --flag=pattern elements.
+transfer_append_colon_patterns() {
+  local flag="${1:-}"
+  local list="${2:-}"
+  local item=""
+
+  [[ -n "$flag" ]] || return 0
+  [[ -n "$list" ]] || return 0
+
+  while [[ -n "$list" ]]; do
+    if [[ "$list" == *:* ]]; then
+      item="${list%%:*}"
+      list="${list#*:}"
+    else
+      item="$list"
+      list=""
+    fi
+
+    [[ -n "$item" ]] || continue
+    _RMT_RSYNC_CMD+=( "--${flag}=${item}" )
+  done
+}
+
+# transfer_rsync_code_hint CODE
+# Print a short explanation for known rsync exit codes.
+transfer_rsync_code_hint() {
+  local code="${1:-0}"
+  case "$code" in
+    0)  printf 'success\n' ;;
+    5)  printf 'permission denied\n' ;;
+    10) printf 'socket error\n' ;;
+    11) printf 'file I/O error\n' ;;
+    12) printf 'protocol stream error\n' ;;
+    23) printf 'partial transfer\n' ;;
+    24) printf 'vanished source files\n' ;;
+    30) printf 'send/receive timeout\n' ;;
+    *)  printf 'unclassified error\n' ;;
+  esac
+}
+
+# transfer_build_cmd DIRECTION
+# Build _RMT_RSYNC_CMD from resolved profile variables.
 transfer_build_cmd() {
-  # TODO: implement rsync argv construction.
-  return 0
+  local direction="${1:-}"
+  local key_part=""
+  local transport=""
+  local src=""
+  local dst=""
+  local extra=""
+  local part=""
+  local had_noglob=0
+
+  [[ -n "${RMT_XFER_HOST:-}" ]] || log_die "transfer_build_cmd: RMT_XFER_HOST is empty"
+  [[ -n "${RMT_XFER_PORT:-}" ]] || log_die "transfer_build_cmd: RMT_XFER_PORT is empty"
+  [[ -n "${RMT_XFER_REMOTE_ROOT:-}" ]] || log_die "transfer_build_cmd: RMT_XFER_REMOTE_ROOT is empty"
+  [[ -n "${RMT_XFER_LOCAL_ROOT:-}" ]] || log_die "transfer_build_cmd: RMT_XFER_LOCAL_ROOT is empty"
+
+  _RMT_RSYNC_CMD=( rsync )
+
+  if [[ "${RMT_XFER_VERIFY:-no}" == "yes" ]]; then
+    _RMT_RSYNC_CMD+=( --archive --human-readable --info=progress2 --append-verify )
+  else
+    _RMT_RSYNC_CMD+=( --archive --human-readable --info=progress2 --partial --partial-dir=.rsync-partial )
+  fi
+
+  if [[ "${RMT_XFER_DELETE:-no}" == "yes" ]]; then
+    _RMT_RSYNC_CMD+=( --delete )
+  fi
+
+  if [[ "${RMT_DRY_RUN:-0}" == "1" ]]; then
+    _RMT_RSYNC_CMD+=( --dry-run )
+  fi
+
+  if [[ -n "${RMT_XFER_KEY:-}" ]]; then
+    key_part=" -i ${RMT_XFER_KEY}"
+  fi
+  transport="ssh -p ${RMT_XFER_PORT}${key_part}"
+  _RMT_RSYNC_CMD+=( "-e" "${transport}" )
+
+  transfer_append_colon_patterns "exclude" "${RMT_XFER_EXCLUDES:-}"
+  transfer_append_colon_patterns "include" "${RMT_XFER_INCLUDES:-}"
+
+  if [[ -n "${RMT_XFER_EXTRA_FLAGS:-}" ]]; then
+    extra="${RMT_XFER_EXTRA_FLAGS}"
+    case "$-" in
+      *f*) had_noglob=1 ;;
+      *) had_noglob=0 ;;
+    esac
+    set -f
+    # Intentionally word-split extra flags using default IFS.
+    # shellcheck disable=SC2086
+    for part in ${extra}; do
+      _RMT_RSYNC_CMD+=( "${part}" )
+    done
+    if (( had_noglob == 0 )); then
+      set +f
+    fi
+  fi
+
+  case "$direction" in
+    up)
+      src="${RMT_XFER_LOCAL_ROOT}/"
+      dst="${RMT_XFER_HOST}:${RMT_XFER_REMOTE_ROOT}/"
+      ;;
+    down)
+      src="${RMT_XFER_HOST}:${RMT_XFER_REMOTE_ROOT}/"
+      dst="${RMT_XFER_LOCAL_ROOT}/"
+      ;;
+    *)
+      log_die "transfer_build_cmd: invalid direction '$direction'"
+      ;;
+  esac
+
+  _RMT_RSYNC_CMD+=( "$src" "$dst" )
+  log_debug "rsync command: $(transfer_join_cmd_for_log "${_RMT_RSYNC_CMD[@]}")"
 }
 
 # transfer_exec
-# Execute a previously built transfer command.
-# Log command at debug level and return rsync exit code.
+# Execute _RMT_RSYNC_CMD and return rsync exit code.
 transfer_exec() {
-  # TODO: implement execution wrapper with logging.
-  return 0
+  local rc=0
+  local hint=""
+
+  set +e
+  "${_RMT_RSYNC_CMD[@]}"
+  rc=$?
+  set -e
+
+  if (( rc != 0 )); then
+    hint="$(transfer_rsync_code_hint "$rc")"
+    log_error "rsync exited with code ${rc} (${hint})"
+  fi
+
+  return "$rc"
 }
 
 # transfer_status
-# Run rsync in status mode using:
-# --dry-run --itemize-changes
-# Summarize what would be transferred.
+# Run rsync dry status mode and summarize planned changes.
 transfer_status() {
-  # TODO: implement status/diff summary mode.
-  return 0
+  local direction="${1:-}"
+  local summary=""
+  local send_count=0
+  local delete_count=0
+  local total_count=0
+  local rc=0
+
+  transfer_build_cmd "$direction"
+  _RMT_RSYNC_CMD+=( --dry-run --itemize-changes )
+
+  set +e
+  summary="$("${_RMT_RSYNC_CMD[@]}" | awk '
+    BEGIN { send=0; del=0; }
+    /^\*deleting / { del++; next; }
+    /^[<>ch\.][^[:space:]]*[[:space:]]/ { send++; next; }
+    END { printf "%d %d %d\n", send, del, send + del; }
+  ')"
+  rc=$?
+  set -e
+
+  if [[ -n "$summary" ]]; then
+    send_count="${summary%% *}"
+    summary="${summary#* }"
+    delete_count="${summary%% *}"
+    total_count="${summary##* }"
+  fi
+
+  log_info "status summary: files_to_send=${send_count} files_to_delete=${delete_count} total=${total_count}"
+  return "$rc"
 }

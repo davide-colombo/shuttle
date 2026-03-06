@@ -53,32 +53,189 @@ USAGE
 }
 
 cmd_up() {
-  echo "not yet implemented"
-  exit 0
+  local rc=0
+  local conf_path=""
+  local conf_dir=""
+
+  if ! config_discover_project; then
+    log_die "no .rmt.conf found from $PWD upward; run 'rmt init' first"
+  fi
+
+  if [[ -n "${RMT_CONFIG_PATH:-}" ]]; then
+    conf_path="${RMT_CONFIG_PATH}"
+    if [[ "${conf_path}" != /* ]]; then
+      conf_path="${PWD}/${conf_path}"
+    fi
+    conf_dir="$(cd -P "$(dirname "${conf_path}")" >/dev/null 2>&1 && pwd)"
+    conf_path="${conf_dir}/$(basename "${conf_path}")"
+    [[ -f "${conf_path}" ]] || log_die "project config override not found: ${conf_path}"
+    RMT_PROJECT_ROOT="${conf_dir}"
+    RMT_PROJECT_CONF="${conf_path}"
+  fi
+
+  config_load_global
+  config_load_project
+  config_resolve_profile "${RMT_PROFILE}"
+
+  if [[ "${RMT_XFER_DIRECTION}" == "down" ]]; then
+    log_die "profile '${RMT_PROFILE}' does not allow uploads (direction=down)"
+  fi
+
+  transfer_build_cmd up
+  set +e
+  transfer_exec
+  rc=$?
+  set -e
+  exit "$rc"
 }
 
 cmd_down() {
-  echo "not yet implemented"
-  exit 0
+  local rc=0
+  local conf_path=""
+  local conf_dir=""
+
+  if ! config_discover_project; then
+    log_die "no .rmt.conf found from $PWD upward; run 'rmt init' first"
+  fi
+
+  if [[ -n "${RMT_CONFIG_PATH:-}" ]]; then
+    conf_path="${RMT_CONFIG_PATH}"
+    if [[ "${conf_path}" != /* ]]; then
+      conf_path="${PWD}/${conf_path}"
+    fi
+    conf_dir="$(cd -P "$(dirname "${conf_path}")" >/dev/null 2>&1 && pwd)"
+    conf_path="${conf_dir}/$(basename "${conf_path}")"
+    [[ -f "${conf_path}" ]] || log_die "project config override not found: ${conf_path}"
+    RMT_PROJECT_ROOT="${conf_dir}"
+    RMT_PROJECT_CONF="${conf_path}"
+  fi
+
+  config_load_global
+  config_load_project
+  config_resolve_profile "${RMT_PROFILE}"
+
+  if [[ "${RMT_XFER_DIRECTION}" == "up" ]]; then
+    log_die "profile '${RMT_PROFILE}' does not allow downloads (direction=up)"
+  fi
+
+  transfer_build_cmd down
+  set +e
+  transfer_exec
+  rc=$?
+  set -e
+  exit "$rc"
 }
 
 cmd_status() {
-  echo "not yet implemented"
-  exit 0
+  local requested_direction="${1:-}"
+  local status_direction=""
+  local rc=0
+  local conf_path=""
+  local conf_dir=""
+
+  if ! config_discover_project; then
+    log_die "no .rmt.conf found from $PWD upward; run 'rmt init' first"
+  fi
+
+  if [[ -n "${RMT_CONFIG_PATH:-}" ]]; then
+    conf_path="${RMT_CONFIG_PATH}"
+    if [[ "${conf_path}" != /* ]]; then
+      conf_path="${PWD}/${conf_path}"
+    fi
+    conf_dir="$(cd -P "$(dirname "${conf_path}")" >/dev/null 2>&1 && pwd)"
+    conf_path="${conf_dir}/$(basename "${conf_path}")"
+    [[ -f "${conf_path}" ]] || log_die "project config override not found: ${conf_path}"
+    RMT_PROJECT_ROOT="${conf_dir}"
+    RMT_PROJECT_CONF="${conf_path}"
+  fi
+
+  config_load_global
+  config_load_project
+  config_resolve_profile "${RMT_PROFILE}"
+
+  if [[ -n "${requested_direction}" ]]; then
+    case "${requested_direction}" in
+      up|down) status_direction="${requested_direction}" ;;
+      *) log_die "status direction must be 'up' or 'down' (got: ${requested_direction})" ;;
+    esac
+  else
+    case "${RMT_XFER_DIRECTION}" in
+      both) status_direction="up" ;;
+      up|down) status_direction="${RMT_XFER_DIRECTION}" ;;
+      *) log_die "invalid profile direction '${RMT_XFER_DIRECTION}' for status" ;;
+    esac
+  fi
+
+  set +e
+  transfer_status "${status_direction}"
+  rc=$?
+  set -e
+  exit "$rc"
 }
 
 cmd_init() {
-  echo "not yet implemented"
+  local script_dir=""
+  local root_dir=""
+  local template_conf=""
+  local target_conf="${PWD}/.rmt.conf"
+  local global_conf=""
+
+  if [[ -f "${target_conf}" ]]; then
+    log_warn ".rmt.conf already exists at ${target_conf}; leaving it unchanged"
+    exit 0
+  fi
+
+  script_dir="$(util_resolve_script_dir "${BASH_SOURCE[0]-}")"
+  root_dir="$(cd -P "${script_dir}/.." >/dev/null 2>&1 && pwd)"
+  template_conf="${root_dir}/share/rmt/template.rmt.conf"
+  [[ -f "${template_conf}" ]] || log_die "template file not found: ${template_conf}"
+
+  cp "${template_conf}" "${target_conf}"
+  log_info "created ${target_conf}"
+  log_info "edit .rmt.conf to set your remote_root and profile options"
+
+  if [[ -n "${RMT_GLOBAL_CONF:-}" ]]; then
+    global_conf="${RMT_GLOBAL_CONF}"
+  else
+    global_conf="${XDG_CONFIG_HOME:-$HOME/.config}/rmt/credentials.env"
+  fi
+
+  if [[ ! -f "${global_conf}" ]]; then
+    log_info "global credentials file is missing: ${global_conf}"
+    log_info "create it with REMOTE_HOST, REMOTE_USER, SSH_PORT[, SSH_KEY] and chmod 600"
+  fi
+
   exit 0
 }
 
 cmd_help() {
-  echo "not yet implemented"
+  cat >&2 <<EOF
+rmt ${RMT_VERSION}
+Usage: rmt [flags] <command>
+
+Commands:
+  init      create .rmt.conf from template in current directory
+  up        sync local changes to remote
+  down      sync remote changes to local
+  status    show what would transfer (dry-run itemized summary)
+  help      show this help
+  version   print version
+
+Global flags:
+  --dry-run           run rsync without writing changes
+  --verbose           enable debug logs
+  --profile <name>    use named profile from .rmt.conf (default: default)
+  --config <path>     override project config file path
+
+Config files:
+  project: .rmt.conf (discovered from current directory upward)
+  global:  \${XDG_CONFIG_HOME:-\$HOME/.config}/rmt/credentials.env (mode 600)
+EOF
   exit 0
 }
 
 cmd_version() {
-  echo "not yet implemented"
+  printf 'rmt %s\n' "${RMT_VERSION}" >&2
   exit 0
 }
 
