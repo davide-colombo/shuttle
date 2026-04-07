@@ -59,6 +59,84 @@ Subcommands:
 USAGE
 }
 
+# ---------------------------------------------------------------------------
+# guard_destructive_delete - Warn and require confirmation when delete = yes.
+#
+# Arguments:
+#   $1 - transfer direction ("up" or "down")
+#
+# Globals read:
+#   SHUTTLE_XFER_DELETE    - "yes" or "no"
+#   SHUTTLE_DRY_RUN        - "1" if dry-run mode
+#   SHUTTLE_XFER_LOCAL_ROOT
+#   SHUTTLE_XFER_REMOTE_ROOT
+#
+# Behaviour:
+#   - If delete != yes or dry-run is active, returns immediately (no-op).
+#   - Otherwise, prints a warning and prompts the user to type the basename
+#     of the destination directory.
+#   - If the typed word does not match, aborts with exit 1.
+#   - If stdin is not a terminal (piped input), aborts with an error message.
+# ---------------------------------------------------------------------------
+guard_destructive_delete() {
+  local direction="$1"
+  local dest_path=""
+  local dest_basename=""
+  local confirmation=""
+
+  [[ "${SHUTTLE_XFER_DELETE}" != "yes" ]] && return 0
+  [[ "${SHUTTLE_DRY_RUN:-0}" == "1" ]] && return 0
+
+  if [[ "$direction" == "up" ]]; then
+    dest_path="${SHUTTLE_XFER_REMOTE_ROOT}"
+  else
+    dest_path="${SHUTTLE_XFER_LOCAL_ROOT}"
+  fi
+
+  dest_basename="$(basename "$dest_path")"
+
+  if [[ ! -t 0 ]]; then
+    log_error "delete = yes requires interactive confirmation but stdin is not a terminal"
+    log_error "Aborting. Run interactively or use --dry-run to preview changes."
+    exit 1
+  fi
+
+  echo ""
+  log_warn "========================================="
+  log_warn " DESTRUCTIVE SYNC - delete = yes"
+  log_warn "========================================="
+  echo ""
+  if [[ "$direction" == "up" ]]; then
+    log_warn "Direction: LOCAL -> REMOTE"
+    log_warn "Source:      ${SHUTTLE_XFER_LOCAL_ROOT}/"
+    log_warn "Destination: ${SHUTTLE_XFER_REMOTE_ROOT}/"
+  else
+    log_warn "Direction: REMOTE -> LOCAL"
+    log_warn "Source:      ${SHUTTLE_XFER_REMOTE_ROOT}/"
+    log_warn "Destination: ${SHUTTLE_XFER_LOCAL_ROOT}/"
+  fi
+  echo ""
+  log_warn "Files in the DESTINATION that do not exist in the SOURCE will be PERMANENTLY DELETED."
+  log_warn "This operation cannot be undone."
+  echo ""
+  log_warn "To confirm, type the destination folder name: ${dest_basename}"
+  echo ""
+
+  printf "  > "
+  read -r confirmation
+
+  if [[ "$confirmation" != "$dest_basename" ]]; then
+    echo ""
+    log_error "Confirmation failed. Expected '${dest_basename}', got '${confirmation}'."
+    log_error "Aborting."
+    exit 1
+  fi
+
+  echo ""
+  log_info "Confirmed. Proceeding with destructive sync..."
+  echo ""
+}
+
 cmd_up() {
   local rc=0
   local conf_path=""
@@ -88,6 +166,7 @@ cmd_up() {
     log_die "profile '${SHUTTLE_PROFILE}' does not allow uploads (direction=down)"
   fi
 
+  guard_destructive_delete "up"
   transfer_build_cmd up
   set +e
   transfer_exec
@@ -125,6 +204,7 @@ cmd_down() {
     log_die "profile '${SHUTTLE_PROFILE}' does not allow downloads (direction=up)"
   fi
 
+  guard_destructive_delete "down"
   transfer_build_cmd down
   set +e
   transfer_exec
