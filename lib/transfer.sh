@@ -91,6 +91,13 @@ transfer_build_cmd() {
     _SHUTTLE_RSYNC_CMD+=( --delete )
   fi
 
+  # Symlink handling is explicit for clarity even though --archive implies --links.
+  if [[ "${SHUTTLE_XFER_FOLLOW_LINKS:-no}" == "yes" ]]; then
+    _SHUTTLE_RSYNC_CMD+=( --copy-links )
+  else
+    _SHUTTLE_RSYNC_CMD+=( --links )
+  fi
+
   if [[ "${SHUTTLE_DRY_RUN:-0}" == "1" ]]; then
     _SHUTTLE_RSYNC_CMD+=( --dry-run )
   fi

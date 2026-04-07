@@ -28,6 +28,7 @@ SHUTTLE_XFER_INCLUDES=""
 SHUTTLE_XFER_EXTRA_FLAGS=""
 SHUTTLE_XFER_DELETE="no"
 SHUTTLE_XFER_VERIFY="no"
+SHUTTLE_XFER_FOLLOW_LINKS="no"
 
 # config_trim VALUE
 # Trim leading and trailing whitespace.
@@ -235,6 +236,7 @@ config_load_project() {
       _SHUTTLE_PROFILES["${section}.direction"]="both"
       _SHUTTLE_PROFILES["${section}.delete"]="no"
       _SHUTTLE_PROFILES["${section}.verify"]="no"
+      _SHUTTLE_PROFILES["${section}.follow_links"]="no"
       _SHUTTLE_PROFILES["${section}.exclude"]=""
       _SHUTTLE_PROFILES["${section}.include"]=""
       _SHUTTLE_PROFILES["${section}.rsync_flags"]=""
@@ -290,6 +292,12 @@ config_load_project() {
             *) log_die "invalid verify value '${value}' in [${section}] (${conf_path})" ;;
           esac
           ;;
+        follow_links)
+          case "${value}" in
+            yes|no) _SHUTTLE_PROFILES["${profile_key}"]="${value}" ;;
+            *) log_die "invalid follow_links value '${value}' in [${section}] (${conf_path})" ;;
+          esac
+          ;;
         *)
           log_warn "config_load_project: unknown key '${key}' in section [${section}]"
           ;;
@@ -322,6 +330,7 @@ config_resolve_profile() {
   local direction=""
   local delete_val=""
   local verify_val=""
+  local follow_links=""
 
   [[ "${_SHUTTLE_PROFILES[${profile}.__exists]:-}" == "1" ]] || {
     log_die "profile '${profile}' not found"
@@ -337,6 +346,7 @@ config_resolve_profile() {
   direction="${_SHUTTLE_PROFILES[${profile}.direction]:-both}"
   delete_val="${_SHUTTLE_PROFILES[${profile}.delete]:-no}"
   verify_val="${_SHUTTLE_PROFILES[${profile}.verify]:-no}"
+  follow_links="${_SHUTTLE_PROFILES[${profile}.follow_links]:-no}"
 
   case "${direction}" in
     up|down|both) : ;;
@@ -350,6 +360,10 @@ config_resolve_profile() {
     yes|no) : ;;
     *) log_die "profile '${profile}' has invalid verify value '${verify_val}'" ;;
   esac
+  case "${follow_links}" in
+    yes|no) : ;;
+    *) log_die "profile '${profile}' has invalid follow_links value '${follow_links}'" ;;
+  esac
 
   SHUTTLE_XFER_HOST="${SHUTTLE_REMOTE_USER}@${SHUTTLE_REMOTE_HOST}"
   SHUTTLE_XFER_PORT="${SHUTTLE_SSH_PORT}"
@@ -362,4 +376,5 @@ config_resolve_profile() {
   SHUTTLE_XFER_EXTRA_FLAGS="${_SHUTTLE_PROFILES[${profile}.rsync_flags]:-}"
   SHUTTLE_XFER_DELETE="${delete_val}"
   SHUTTLE_XFER_VERIFY="${verify_val}"
+  SHUTTLE_XFER_FOLLOW_LINKS="${follow_links}"
 }
