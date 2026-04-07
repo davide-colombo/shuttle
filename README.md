@@ -133,6 +133,7 @@ Supported keys per profile:
 - `include` (repeatable string, default none): rsync include patterns
 - `rsync_flags` (string, default empty): extra rsync flags appended verbatim
 - `delete` (`yes`|`no`, default `no`): add `--delete` when `yes`
+- `follow_links` (`yes`|`no`, default `no`): when `yes`, rsync dereferences symbolic links and transfers the file they point to (`--copy-links`); when `no`, symlinks are preserved as symlinks on the destination (`--links`)
 - `verify` (`yes`|`no`, default `no`): use `--append-verify` instead of partial mode
 
 ## Profiles
@@ -174,6 +175,12 @@ Global flags:
 - `--profile <name>`: select named profile from `.shuttle.conf`
 - `--config <path>`: override project config path
 
+## Delete Safety Guard
+
+When `delete = yes` is enabled and the transfer is not running in dry-run mode, `shuttle` displays a warning and requires interactive confirmation before continuing. To proceed, type the basename of the destination directory exactly as prompted.
+
+Dry-run mode (`--dry-run`) bypasses this confirmation prompt so you can safely preview deletions. If standard input is not a terminal, `shuttle` aborts the transfer instead of attempting a destructive delete without confirmation. `shuttle status` never triggers the guard because it always operates as a dry-run summary.
+
 ## How It Works
 
 `shuttle` walks upward from the current directory to discover `.shuttle.conf` (similar to how Git finds `.git/`), loads global SSH credentials from `~/.config/shuttle/credentials.env`, merges those values with the selected profile, builds an rsync command, and executes it. Base rsync flags are `--archive`, `--human-readable`, `--info=progress2`, `--partial`, and `--partial-dir=.rsync-partial`; when `verify = yes`, shuttle switches to `--append-verify` mode for safer large-file continuation and integrity verification.
@@ -185,3 +192,14 @@ MIT License. See [LICENSE](LICENSE).
 ## Author
 
 [Davide Colombo](https://github.com/davidecolombo)
+
+## Changelog
+
+### v0.2.0
+
+- Add `follow_links` config option for symlink handling.
+- Add destructive-delete safety guard requiring interactive confirmation when `delete = yes`.
+
+### v0.1.0
+
+- Initial release.
