@@ -129,12 +129,22 @@ Supported keys per profile:
 - `remote_root` (string, required): remote directory root for sync
 - `local_root` (string, default project root): local directory root
 - `direction` (`up`|`down`|`both`, default `both`): allowed transfer direction
-- `exclude` (repeatable string, default none): rsync exclude patterns
 - `include` (repeatable string, default none): rsync include patterns
+- `exclude` (repeatable string, default none): rsync exclude patterns
 - `rsync_flags` (string, default empty): extra rsync flags appended verbatim
 - `delete` (`yes`|`no`, default `no`): add `--delete` when `yes`
 - `follow_links` (`yes`|`no`, default `no`): when `yes`, rsync dereferences symbolic links and transfers the file they point to (`--copy-links`); when `no`, symlinks are preserved as symlinks on the destination (`--links`)
 - `verify` (`yes`|`no`, default `no`): use `--append-verify` instead of partial mode
+
+`include` and `exclude` are repeatable. Shuttle groups all include rules before all exclude rules when building the rsync command, which supports whitelist-style profiles:
+
+```ini
+include = /important/
+include = /important/*.tsv
+exclude = *
+```
+
+Exact mixed rsync filter ordering is not currently supported. For complex filter-order semantics, use direct rsync until a future `filter = ...` directive exists.
 
 ## Profiles
 

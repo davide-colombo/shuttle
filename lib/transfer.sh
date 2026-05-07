@@ -108,8 +108,8 @@ transfer_build_cmd() {
   transport="ssh -p ${SHUTTLE_XFER_PORT}${key_part}"
   _SHUTTLE_RSYNC_CMD+=( "-e" "${transport}" )
 
-  transfer_append_colon_patterns "exclude" "${SHUTTLE_XFER_EXCLUDES:-}"
   transfer_append_colon_patterns "include" "${SHUTTLE_XFER_INCLUDES:-}"
+  transfer_append_colon_patterns "exclude" "${SHUTTLE_XFER_EXCLUDES:-}"
 
   if [[ -n "${SHUTTLE_XFER_EXTRA_FLAGS:-}" ]]; then
     extra="${SHUTTLE_XFER_EXTRA_FLAGS}"
