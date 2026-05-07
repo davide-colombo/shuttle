@@ -136,7 +136,7 @@ Supported keys per profile:
 - `follow_links` (`yes`|`no`, default `no`): when `yes`, rsync dereferences symbolic links and transfers the file they point to (`--copy-links`); when `no`, symlinks are preserved as symlinks on the destination (`--links`)
 - `verify` (`yes`|`no`, default `no`): use `--append-verify` instead of partial mode
 
-`include` and `exclude` are repeatable. Shuttle groups all include rules before all exclude rules when building the rsync command, which supports whitelist-style profiles:
+`include` and `exclude` are repeatable. Shuttle emits all include rules before all exclude rules when building the rsync command, preserving repeat order within the include group and within the exclude group. This supports whitelist-style profiles:
 
 ```ini
 include = /important/
@@ -204,6 +204,11 @@ MIT License. See [LICENSE](LICENSE).
 [Davide Colombo](https://github.com/davidecolombo)
 
 ## Changelog
+
+### v0.2.1
+
+- Emit `include = ...` rules before `exclude = ...` rules when building rsync commands.
+- Document grouped include/exclude behavior for whitelist-style profiles.
 
 ### v0.2.0
 
